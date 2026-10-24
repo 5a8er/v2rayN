@@ -1,5 +1,9 @@
 # v2rayN
 
+> **Fork note:** branch `wg-chain-loopback` of this fork adds WireGuard-over-carrier chains,
+> a Linux kill switch, per-chain entry control (manual / frozen / failover) and entry/exit
+> info in the status bar. See **[FORK.md](FORK.md)**. Everything else is upstream v2rayN.
+
 ### A GUI client for Windows, Linux and macOS. Support [Xray](https://github.com/XTLS/Xray-core) and [sing-box](https://github.com/SagerNet/sing-box) and [others](https://github.com/2dust/v2rayN/wiki/List-of-supported-cores)
 
 [![CodeFactor](https://www.codefactor.io/repository/github/2dust/v2rayn/badge)](https://www.codefactor.io/repository/github/2dust/v2rayn)
