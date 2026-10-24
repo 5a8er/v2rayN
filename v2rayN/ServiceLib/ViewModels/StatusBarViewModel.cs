@@ -99,6 +99,12 @@ public partial class StatusBarViewModel : MyReactiveObject
     public partial bool EnableTun { get; set; }
 
     [Reactive]
+    public partial bool EnableKillSwitch { get; set; }
+
+    [Reactive]
+    public partial bool BlKillSwitchSupported { get; set; }
+
+    [Reactive]
     public partial bool BlIsNonWindows { get; set; }
 
     #endregion UI
@@ -121,6 +127,9 @@ public partial class StatusBarViewModel : MyReactiveObject
             _config.TunModeItem.EnableTun = EnableTun = false;
         }
 
+        BlKillSwitchSupported = KillSwitchManager.IsSupported;
+        EnableKillSwitch = BlKillSwitchSupported && _config.KillSwitchItem.Enabled;
+
         #region WhenAnyValue && ReactiveCommand
 
         this.WhenAnyValue(x => x.SelectedRouting)
@@ -138,6 +147,9 @@ public partial class StatusBarViewModel : MyReactiveObject
 
         this.WhenAnyValue(x => x.EnableTun)
             .SubscribeAsync(async _ => await DoEnableTun());
+
+        this.WhenAnyValue(x => x.EnableKillSwitch)
+            .SubscribeAsync(async _ => await DoEnableKillSwitch());
 
         CopyProxyCmdToClipboardCmd = ReactiveCommand.CreateFromTask(async () =>
         {
@@ -457,6 +469,64 @@ public partial class StatusBarViewModel : MyReactiveObject
             }
         }
 
+        await ConfigHandler.SaveConfig(_config);
+        ReloadRequested.Publish();
+    }
+
+    private async Task DoEnableKillSwitch()
+    {
+        if (_config.KillSwitchItem.Enabled == EnableKillSwitch)
+        {
+            return;
+        }
+        // Any early return reverts the toggle to the saved state
+        var wanted = EnableKillSwitch;
+        EnableKillSwitch = _config.KillSwitchItem.Enabled;
+
+        if (AppManager.Instance.LinuxSudoPwd.IsNullOrEmpty())
+        {
+            var password = await PasswordInputInteraction.HandleSafe(RxVoid.Default);
+            if (password.IsNullOrEmpty())
+            {
+                return;
+            }
+        }
+
+        if (wanted)
+        {
+            // Freeze the carrier the balancer currently rates best; a profile without
+            // an entry group has nothing to pin.
+            var runningContext = CoreManager.Instance.RunningContext;
+            var pinned = await KillSwitchManager.PickBestCarrierAsync(runningContext);
+            if (pinned is null && runningContext?.OutboundTagIndexIds.Count > 0)
+            {
+                NoticeManager.Instance.SendMessageEx("Kill switch: no healthy carrier found yet, try again in a few seconds");
+                return;
+            }
+            _config.KillSwitchItem = new KillSwitchItem
+            {
+                Enabled = true,
+                PinnedIndexId = pinned,
+                PinnedForIndexId = pinned is null ? null : _config.IndexId,
+            };
+            var pinnedItem = pinned is null ? null : await AppManager.Instance.GetProfileItem(pinned);
+            NoticeManager.Instance.SendMessageEx(pinnedItem is null
+                ? "Kill switch on"
+                : $"Kill switch on, carrier frozen to {pinnedItem.Remarks}");
+        }
+        else
+        {
+            var error = await KillSwitchManager.Instance.DisableAsync();
+            if (error != null)
+            {
+                NoticeManager.Instance.SendMessageEx(error);
+                return;
+            }
+            _config.KillSwitchItem = new KillSwitchItem();
+            NoticeManager.Instance.SendMessageEx("Kill switch off, carriers are tested again");
+        }
+
+        EnableKillSwitch = wanted;
         await ConfigHandler.SaveConfig(_config);
         ReloadRequested.Publish();
     }

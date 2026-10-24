@@ -87,6 +87,7 @@ public static class ConfigHandler
             PermitWithoutStream = false,
             InitialWindowsSize = 0,
         };
+        config.KillSwitchItem ??= new();
         config.TunModeItem ??= new TunModeItem
         {
             EnableTun = false,

@@ -232,6 +232,12 @@ public class CoreConfigV2rayServiceTests
 
         // the long-lived carrier session must be redialed once TUN routes exist
         await context.RestartAfterTun.Should().BeTrue();
+
+        // observatory results (by tag) map back to the member profiles, for kill switch pinning
+        await context.OutboundTagIndexIds.Count.Should().BeEqualTo(2);
+        await context.OutboundTagIndexIds.Values.Should().Contain(n1.IndexId);
+        await context.OutboundTagIndexIds.Values.Should().Contain(n2.IndexId);
+        await cfg.metrics.Should().NotBeNull();
     }
 
     [Test]

@@ -41,6 +41,10 @@ public record CoreConfigContext
     // If that connection is dialed before the TUN routes exist, TUN blackholes it and the session
     // never recovers, so the core has to be restarted once the TUN device is up.
     public bool RestartAfterTun { get; set; }
+
+    // Outbound tag of every plain group member -> its profile IndexId, shared by the nested
+    // contexts, so observatory results (keyed by tag) can be mapped back to a profile.
+    public Dictionary<string, string> OutboundTagIndexIds { get; init; } = new();
 }
 
 public record LoopbackRoute(string InboundTag, string Selector, EMultipleLoad MultipleLoad);

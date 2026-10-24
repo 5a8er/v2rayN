@@ -52,7 +52,7 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
 
             GenRouting();
 
-            ApplyLoopbackRoutes();
+            ApplyLoopbackRoutes(exposeObservatory: true);
 
             GenDns();
 

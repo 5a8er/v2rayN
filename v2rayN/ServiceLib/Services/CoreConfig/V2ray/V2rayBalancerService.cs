@@ -118,7 +118,7 @@ public partial class CoreConfigV2rayService
     /// Wires every loopback recorded while building chains to its group's balancer.
     /// The rule goes first so user routing rules never catch the carrier traffic.
     /// </summary>
-    private void ApplyLoopbackRoutes()
+    private void ApplyLoopbackRoutes(bool exposeObservatory = false)
     {
         foreach (var route in context.LoopbackRoutes)
         {
@@ -139,6 +139,11 @@ public partial class CoreConfigV2rayService
                 inboundTag = [route.InboundTag],
                 balancerTag = route.Selector + Global.BalancerTagSuffix,
             });
+        }
+        if (exposeObservatory && context.LoopbackRoutes.Count > 0)
+        {
+            // The kill switch pins the carrier from the observatory results exposed here
+            _coreConfig.metrics ??= new Metrics4Ray { listen = $"{Global.Loopback}:{AppManager.Instance.StatePort}" };
         }
         context.LoopbackRoutes.Clear();
     }

@@ -138,6 +138,17 @@ public class CoreTypeItem
 }
 
 [Serializable]
+public class KillSwitchItem
+{
+    public bool Enabled { get; set; }
+
+    // While the switch is on, the entry group of PinnedForIndexId is frozen to PinnedIndexId:
+    // no carrier probing or switching until the switch is turned off again.
+    public string? PinnedIndexId { get; set; }
+    public string? PinnedForIndexId { get; set; }
+}
+
+[Serializable]
 public class TunModeItem
 {
     public bool EnableTun { get; set; }

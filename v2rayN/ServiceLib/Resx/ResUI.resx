@@ -903,6 +903,9 @@
   <data name="TbEnableTunAs" xml:space="preserve">
     <value>Enable Tun</value>
   </data>
+  <data name="TbEnableKillSwitch" xml:space="preserve">
+    <value>Kill switch</value>
+  </data>
   <data name="TbSettingsNewPort4LAN" xml:space="preserve">
     <value>New Port for LAN</value>
   </data>

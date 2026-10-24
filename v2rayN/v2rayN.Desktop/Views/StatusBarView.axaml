@@ -48,6 +48,23 @@
             </StackPanel>
 
             <StackPanel
+                x:Name="spEnableKillSwitch"
+                Margin="{StaticResource MarginLr8}"
+                VerticalAlignment="Center"
+                DockPanel.Dock="Left"
+                Orientation="Horizontal">
+                <TextBlock
+                    Margin="{StaticResource MarginLr8}"
+                    VerticalAlignment="Center"
+                    Text="{x:Static resx:ResUI.TbEnableKillSwitch}" />
+                <ToggleSwitch
+                    x:Name="togEnableKillSwitch"
+                    Margin="{StaticResource Margin4}"
+                    HorizontalAlignment="Center"
+                    Theme="{DynamicResource SimpleToggleSwitch}" />
+            </StackPanel>
+
+            <StackPanel
                 Margin="{StaticResource MarginLr8}"
                 VerticalAlignment="Center"
                 DockPanel.Dock="Left"

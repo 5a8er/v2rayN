@@ -9,6 +9,9 @@ public class CoreManager
     public static CoreManager Instance => _instance.Value;
     private Config _config;
 
+    /// <summary>Context of the last main core load; its outbound tag map lets the kill switch pin a carrier.</summary>
+    public CoreConfigContext? RunningContext { get; private set; }
+
     [SupportedOSPlatform("windows")]
     private WindowsJobService? _processJob;
 
@@ -84,6 +87,19 @@ public class CoreManager
         await UpdateFunc(false, string.Format(ResUI.StartService, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")));
         await CoreStop();
         await Task.Delay(100);
+        RunningContext = mainContext;
+
+        // The firewall must be in place before any core can open a connection
+        if (_config.KillSwitchItem.Enabled && KillSwitchManager.IsSupported)
+        {
+            var killSwitchError = await KillSwitchManager.Instance.ApplyAsync(mainContext);
+            if (killSwitchError != null)
+            {
+                // Fail closed: without the matching firewall, run nothing rather than risk a leak
+                await UpdateFunc(true, killSwitchError);
+                return;
+            }
+        }
 
         if (Utils.IsWindows() && (mainContext?.IsTunEnabled == true || preContext?.IsTunEnabled == true))
         {

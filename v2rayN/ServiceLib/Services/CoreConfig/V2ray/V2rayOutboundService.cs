@@ -690,6 +690,7 @@ public partial class CoreConfigV2rayService
                 continue;
             }
             outbound.tag = currentTag;
+            context.OutboundTagIndexIds[currentTag] = node.IndexId;
             resultOutbounds.Add(outbound);
         }
         return resultOutbounds;
