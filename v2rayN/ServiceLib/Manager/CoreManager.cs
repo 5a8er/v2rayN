@@ -18,6 +18,11 @@ public class CoreManager
     private ProcessService? _processService;
     private ProcessService? _processPreService;
     private bool _linuxSudo = false;
+
+    // Loads and stops run one at a time: a reload (e.g. after a subscription update) racing the
+    // exit's stop used to lose track of the freshly started core and leave it orphaned.
+    private readonly SemaphoreSlim _coreLock = new(1, 1);
+    private bool _exiting;
     private Func<bool, string, Task>? _updateFunc;
     private const string _tag = "CoreHandler";
 
@@ -73,6 +78,24 @@ public class CoreManager
             return;
         }
 
+        await _coreLock.WaitAsync();
+        try
+        {
+            if (_exiting)
+            {
+                return;
+            }
+            await LoadCoreLocked(mainContext, preContext);
+        }
+        finally
+        {
+            _coreLock.Release();
+        }
+    }
+
+    private async Task LoadCoreLocked(CoreConfigContext mainContext, CoreConfigContext? preContext)
+    {
+
         var node = mainContext.Node;
         var fileName = Utils.GetBinConfigPath(Global.CoreConfigFileName);
         var result = await CoreConfigHandler.GenerateClientConfig(mainContext, fileName);
@@ -85,7 +108,7 @@ public class CoreManager
         await UpdateFunc(false, $"{node.GetSummary()}");
         await UpdateFunc(false, $"{Utils.GetRuntimeInfo()}");
         await UpdateFunc(false, string.Format(ResUI.StartService, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")));
-        await CoreStop();
+        await CoreStopLocked();
         await Task.Delay(100);
         RunningContext = mainContext;
 
@@ -161,7 +184,22 @@ public class CoreManager
         return await RunProcess(coreInfo, fileName, true, false);
     }
 
-    public async Task CoreStop()
+    /// <param name="forExit">The app is closing: also refuse any reload still waiting to run.</param>
+    public async Task CoreStop(bool forExit = false)
+    {
+        await _coreLock.WaitAsync();
+        try
+        {
+            _exiting |= forExit;
+            await CoreStopLocked();
+        }
+        finally
+        {
+            _coreLock.Release();
+        }
+    }
+
+    private async Task CoreStopLocked()
     {
         try
         {
@@ -171,18 +209,20 @@ public class CoreManager
                 _linuxSudo = false;
             }
 
-            if (_processService != null)
+            var process = _processService;
+            _processService = null;
+            if (process != null)
             {
-                await _processService.StopAsync();
-                _processService.Dispose();
-                _processService = null;
+                await process.StopAsync();
+                process.Dispose();
             }
 
-            if (_processPreService != null)
+            var preProcess = _processPreService;
+            _processPreService = null;
+            if (preProcess != null)
             {
-                await _processPreService.StopAsync();
-                _processPreService.Dispose();
-                _processPreService = null;
+                await preProcess.StopAsync();
+                preProcess.Dispose();
             }
         }
         catch (Exception ex)

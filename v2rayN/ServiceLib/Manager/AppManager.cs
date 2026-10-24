@@ -132,7 +132,7 @@ public sealed class AppManager
             await ConfigHandler.SaveConfig(_config);
             await ProfileExManager.Instance.SaveTo();
             await StatisticsManager.Instance.SaveTo();
-            await CoreManager.Instance.CoreStop();
+            await CoreManager.Instance.CoreStop(forExit: true);
             StatisticsManager.Instance.Close();
 
             Logging.SaveLog("AppExitAsync End");
