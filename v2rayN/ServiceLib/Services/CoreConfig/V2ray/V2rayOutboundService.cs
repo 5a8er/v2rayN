@@ -777,6 +777,7 @@ public partial class CoreConfigV2rayService
                         });
                         context.LoopbackRoutes.Add(new LoopbackRoute(loopbackTag, currentTag,
                             node.GetProtocolExtra().MultipleLoad ?? EMultipleLoad.LeastPing));
+                        context.RestartAfterTun = true;
                     }
                     else if (chainStartNodes.Count == 1)
                     {

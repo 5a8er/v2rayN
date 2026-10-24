@@ -94,6 +94,7 @@ public class CoreManager
         await CoreStart(mainContext);
         await WaitForProxyPort(preContext);
         await CoreStartPreService(preContext);
+        await RestartMainCoreAfterTun(mainContext, preContext);
 
         AppManager.Instance.RunningCoreType = preContext?.RunCoreType ?? mainContext.RunCoreType;
 
@@ -209,6 +210,47 @@ public class CoreManager
                 _processPreService = proc;
             }
         }
+    }
+
+    private async Task RestartMainCoreAfterTun(CoreConfigContext mainContext, CoreConfigContext? preContext)
+    {
+        if (!mainContext.RestartAfterTun
+            || preContext?.IsTunEnabled != true
+            || mainContext.IsTunEnabled
+            || _processPreService is not { HasExited: false }
+            || _processService is null)
+        {
+            return;
+        }
+
+        await WaitForTunDevice();
+
+        await _processService.StopAsync();
+        _processService.Dispose();
+        _processService = null;
+        await CoreStart(mainContext);
+        await UpdateFunc(false, "Restarted core after TUN came up (WireGuard chain)");
+    }
+
+    private static async Task WaitForTunDevice()
+    {
+        // The interface name is only fixed on Linux; elsewhere just give the routes a moment.
+        if (!Utils.IsLinux())
+        {
+            await Task.Delay(1000);
+            return;
+        }
+
+        for (var i = 0; i < 100; i++)
+        {
+            if (NetworkInterface.GetAllNetworkInterfaces().Any(n => n.Name == "singbox_tun"))
+            {
+                break;
+            }
+            await Task.Delay(100);
+        }
+        // auto_route installs the rules right after the device appears
+        await Task.Delay(500);
     }
 
     private async Task UpdateFunc(bool notify, string msg)

@@ -36,6 +36,11 @@ public record CoreConfigContext
     // Groups reached through a loopback outbound instead of cloning the downstream chain;
     // each entry needs an observatory, a balancer and an inboundTag routing rule.
     public List<LoopbackRoute> LoopbackRoutes { get; init; } = [];
+
+    // A WireGuard session riding a loopback keeps its carrier connection open for its whole life.
+    // If that connection is dialed before the TUN routes exist, TUN blackholes it and the session
+    // never recovers, so the core has to be restarted once the TUN device is up.
+    public bool RestartAfterTun { get; set; }
 }
 
 public record LoopbackRoute(string InboundTag, string Selector, EMultipleLoad MultipleLoad);

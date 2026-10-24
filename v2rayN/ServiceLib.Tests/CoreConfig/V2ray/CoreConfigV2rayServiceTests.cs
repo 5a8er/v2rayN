@@ -225,6 +225,9 @@ public class CoreConfigV2rayServiceTests
         await cfg.routing.balancers!.Should().Contain(b => b.tag == groupTag + Global.BalancerTagSuffix);
         await cfg.observatory!.subjectSelector.Should().Contain(groupTag);
         await cfg.outbounds.Count(o => o.tag.StartsWith(groupTag + "-", StringComparison.Ordinal)).Should().BeEqualTo(2);
+
+        // the long-lived carrier session must be redialed once TUN routes exist
+        await context.RestartAfterTun.Should().BeTrue();
     }
 
     [Test]
