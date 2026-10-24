@@ -370,7 +370,7 @@ public partial class StatusBarViewModel : MyReactiveObject
         {
             ProfileExManager.Instance.SetTestIpInfo(item.IndexId, ip);
         }
-        _exitIp = result.Time > 0 ? result.Ip : null;
+        _exitIp = result.Time <= 0 ? null : ip ?? await LookupExitIpAsync();
         RxSchedulers.MainThreadScheduler.Schedule(() => _ = RefreshEntryExitAsync());
         if (result.Time > 0)
         {
@@ -676,6 +676,14 @@ public partial class StatusBarViewModel : MyReactiveObject
         await Task.CompletedTask;
     }
 
+    /// <summary>The exit address for the status bar, even when the IP lookup is turned off in the settings.</summary>
+    private static async Task<string?> LookupExitIpAsync()
+    {
+        var proxy = new WebProxy($"socks5://{Global.Loopback}:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}");
+        var info = await ConnectionHandler.GetIPInfo(proxy, default, Global.IPAPIUrls[1]);
+        return info?.Ip is null ? null : info.ToString();
+    }
+
     public async Task RefreshEntryExitAsync()
     {
         var active = await ConfigHandler.GetDefaultServer(_config);
@@ -687,19 +695,23 @@ public partial class StatusBarViewModel : MyReactiveObject
         var info = await KillSwitchManager.GetEntryExitAsync(_config, active, CoreManager.Instance.RunningContext);
         var mode = info.Mode switch
         {
-            KillSwitchManager.ECarrierMode.Manual => " [📌 manual]",
-            KillSwitchManager.ECarrierMode.Frozen => " [❄ frozen]",
-            KillSwitchManager.ECarrierMode.Auto => " [auto]",
+            KillSwitchManager.ECarrierMode.Manual => "📌 manual ",
+            KillSwitchManager.ECarrierMode.Frozen => "❄ frozen ",
+            KillSwitchManager.ECarrierMode.Auto => "auto ",
             _ => string.Empty,
         };
+        // Tag and address first, the remark isolated last: remarks often carry right-to-left
+        // text that would otherwise reorder the whole line.
         EntryDisplay = info.Entry is null
             ? "Entry: -"
-            : $"Entry: {info.Entry.Remarks} · {info.Entry.Address}{mode}";
+            : $"Entry: {mode}{info.Entry.Address} · {Isolate(info.Entry.Remarks)}";
         var exitIp = _exitIp.IsNullOrEmpty() ? "-" : _exitIp;
         ExitDisplay = info.Exit is null
-            ? $"Exit IP: {exitIp}"
-            : $"Exit: {info.Exit.Remarks} → {exitIp}";
+            ? $"Exit: {exitIp}"
+            : $"Exit: {exitIp} · {Isolate(info.Exit.Remarks)}";
     }
+
+    private static string Isolate(string text) => $"\u2068{text}\u2069";
 
     public async Task UpdateStatistics(ServerSpeedItem update)
     {
