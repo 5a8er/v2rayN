@@ -124,6 +124,15 @@ public partial class CoreConfigV2rayService
         {
             GenObservatory(route.MultipleLoad, route.Selector);
             GenBalancer(route.MultipleLoad, route.Selector);
+
+            // Before the first observatory round the balancer has nothing to pick, and xray then
+            // sends the loopback to the default outbound: the WireGuard outbound itself. That
+            // self-loop never errors, so the session stays dead. Fall back to a real group member
+            // instead; if it is down, the dial fails and WireGuard redials through the balancer.
+            var balancer = _coreConfig.routing.balancers!.Last(b => b.tag == route.Selector + Global.BalancerTagSuffix);
+            balancer.fallbackTag = _coreConfig.outbounds
+                .FirstOrDefault(o => o.tag.StartsWith(route.Selector + "-", StringComparison.Ordinal))?.tag;
+
             _coreConfig.routing.rules.Insert(0, new RulesItem4Ray
             {
                 type = "field",

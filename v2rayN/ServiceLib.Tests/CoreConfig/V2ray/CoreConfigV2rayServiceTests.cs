@@ -223,6 +223,10 @@ public class CoreConfigV2rayServiceTests
         await rule.inboundTag!.Should().Contain(loopback.settings.inboundTag!);
         await rule.balancerTag.Should().BeEqualTo(groupTag + Global.BalancerTagSuffix);
         await cfg.routing.balancers!.Should().Contain(b => b.tag == groupTag + Global.BalancerTagSuffix);
+
+        // before the first probe the balancer must not fall through to the WireGuard outbound itself
+        var balancer = cfg.routing.balancers!.Single(b => b.tag == groupTag + Global.BalancerTagSuffix);
+        await balancer.fallbackTag!.Should().StartWith(groupTag + "-");
         await cfg.observatory!.subjectSelector.Should().Contain(groupTag);
         await cfg.outbounds.Count(o => o.tag.StartsWith(groupTag + "-", StringComparison.Ordinal)).Should().BeEqualTo(2);
 
