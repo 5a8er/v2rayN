@@ -370,7 +370,7 @@ public partial class StatusBarViewModel : MyReactiveObject
         {
             ProfileExManager.Instance.SetTestIpInfo(item.IndexId, ip);
         }
-        _exitIp = result.Time <= 0 ? null : ip ?? await LookupExitIpAsync();
+        _exitIp = result.Time <= 0 ? null : ip;
         RxSchedulers.MainThreadScheduler.Schedule(() => _ = RefreshEntryExitAsync());
         if (result.Time > 0)
         {
@@ -676,14 +676,6 @@ public partial class StatusBarViewModel : MyReactiveObject
         await Task.CompletedTask;
     }
 
-    /// <summary>The exit address for the status bar, even when the IP lookup is turned off in the settings.</summary>
-    private static async Task<string?> LookupExitIpAsync()
-    {
-        var proxy = new WebProxy($"socks5://{Global.Loopback}:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}");
-        var info = await ConnectionHandler.GetIPInfo(proxy, default, Global.IPAPIUrls[1]);
-        return info?.Ip is null ? null : info.ToString();
-    }
-
     public async Task RefreshEntryExitAsync()
     {
         var active = await ConfigHandler.GetDefaultServer(_config);
@@ -705,7 +697,9 @@ public partial class StatusBarViewModel : MyReactiveObject
         EntryDisplay = info.Entry is null
             ? "Entry: -"
             : $"Entry: {mode}{info.Entry.Address} · {Isolate(info.Entry.Remarks)}";
-        var exitIp = _exitIp.IsNullOrEmpty() ? "-" : _exitIp;
+        // No lookup of our own: an empty IP API URL in the settings means the user opted out
+        var exitIp = _exitIp.IsNotEmpty() ? _exitIp
+            : _config.SpeedTestItem.IPAPIUrl.IsNullOrEmpty() ? "IP lookup off (Settings → IP API URL)" : "-";
         ExitDisplay = info.Exit is null
             ? $"Exit: {exitIp}"
             : $"Exit: {exitIp} · {Isolate(info.Exit.Remarks)}";
