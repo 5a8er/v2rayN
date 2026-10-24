@@ -52,6 +52,8 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
 
             GenRouting();
 
+            ApplyLoopbackRoutes();
+
             GenDns();
 
             GenStatistic();
@@ -201,6 +203,7 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
                 }
                 _coreConfig.routing.rules.Add(rule);
             }
+            ApplyLoopbackRoutes();
 
             if (_config.CoreBasicItem.EnableFragment)
             {
@@ -277,6 +280,7 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
             });
 
             _coreConfig.routing.rules.Add(BuildFinalRule());
+            ApplyLoopbackRoutes();
 
             if (_config.CoreBasicItem.EnableFragment)
             {

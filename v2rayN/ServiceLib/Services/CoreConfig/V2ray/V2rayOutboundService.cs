@@ -683,10 +683,46 @@ public partial class CoreConfigV2rayService
                 continue;
             }
             var outbound = new CoreConfigV2rayService(context with { Node = node, }).BuildProxyOutbound();
+            // One refused member would stop the core from starting, taking the whole group down
+            if (IsRefusedPlaintextOutbound(outbound))
+            {
+                Logging.SaveLog($"{_tag}: skip group member '{node.Remarks}', Xray refuses {outbound.protocol} without TLS to a public address");
+                continue;
+            }
             outbound.tag = currentTag;
             resultOutbounds.Add(outbound);
         }
         return resultOutbounds;
+    }
+
+    private static readonly string[] _privateDomainSuffixes = [".lan", ".local", ".localhost", ".internal", ".home.arpa", ".localdomain"];
+
+    /// <summary>
+    /// Xray rejects VLESS/Trojan without TLS (or VLESS encryption) unless the server is a private IP or domain.
+    /// Unknown domains are treated as public, so a doubtful member is skipped rather than breaking the core.
+    /// </summary>
+    private static bool IsRefusedPlaintextOutbound(Outbounds4Ray outbound)
+    {
+        if (outbound.protocol is not ("vless" or "trojan"))
+        {
+            return false;
+        }
+        if (outbound.streamSettings?.security is not (null or "" or "none"))
+        {
+            return false;
+        }
+        if (outbound.settings?.encryption is not (null or "" or "none"))
+        {
+            return false;
+        }
+
+        var address = outbound.settings?.address?.ToString() ?? string.Empty;
+        if (Utils.IsIpAddress(address))
+        {
+            return !Utils.IsPrivateNetwork(address);
+        }
+        return address.Contains('.')
+            && !_privateDomainSuffixes.Any(s => address.EndsWith(s, StringComparison.OrdinalIgnoreCase));
     }
 
     private List<Outbounds4Ray> BuildChainOutboundsList(string baseTagName = Global.ProxyTag)
@@ -722,7 +758,27 @@ public partial class CoreConfigV2rayService
                 if (i != 0)
                 {
                     var chainStartNodes = childProfiles.Where(n => n.tag.StartsWith(currentTag)).ToList();
-                    if (chainStartNodes.Count == 1)
+                    var downstreamNodes = resultOutbounds.Where(n => n.streamSettings?.sockopt?.dialerProxy == currentTag).ToList();
+                    if (chainStartNodes.Count > 1 && downstreamNodes.Any(n => n.protocol == "wireguard"))
+                    {
+                        // WireGuard is one stateful identity: cloning it per group member makes the server
+                        // roam between the clones. Keep a single instance and reach the group's balancer
+                        // through a loopback outbound instead.
+                        var loopbackTag = $"loopback-{currentTag}";
+                        foreach (var downstreamNode in downstreamNodes)
+                        {
+                            FillDialerProxy(downstreamNode, loopbackTag);
+                        }
+                        resultOutbounds.Add(new Outbounds4Ray
+                        {
+                            tag = loopbackTag,
+                            protocol = "loopback",
+                            settings = new() { inboundTag = loopbackTag },
+                        });
+                        context.LoopbackRoutes.Add(new LoopbackRoute(loopbackTag, currentTag,
+                            node.GetProtocolExtra().MultipleLoad ?? EMultipleLoad.LeastPing));
+                    }
+                    else if (chainStartNodes.Count == 1)
                     {
                         var firstChainTag = chainStartNodes.First().tag;
                         foreach (var existedChainEndNode in resultOutbounds.Where(n => n.streamSettings?.sockopt?.dialerProxy == currentTag))

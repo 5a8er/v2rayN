@@ -184,6 +184,78 @@ public class CoreConfigV2rayServiceTests
     }
 
     [Test]
+    public async Task GenerateClientConfigContent_ProxyChainWithPolicyGroup_WireguardExit_ShouldUseSingleWireguardViaLoopback()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.Xray);
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+
+        var n1 = CoreConfigTestFactory.CreateSocksNode(ECoreType.Xray, "n1", "node-1");
+        var n2 = CoreConfigTestFactory.CreateSocksNode(ECoreType.Xray, "n2", "node-2");
+        var wg = CoreConfigTestFactory.CreateWireguardNode(ECoreType.Xray, "wg", "wg");
+        var group = CoreConfigTestFactory.CreatePolicyGroupNode(ECoreType.Xray, "g1", "group",
+            [n1.IndexId, n2.IndexId]);
+        var chain = CoreConfigTestFactory.CreateProxyChainNode(ECoreType.Xray, "c1", "chain",
+            [group.IndexId, wg.IndexId]);
+
+        var context = CoreConfigTestFactory.CreateContext(config, chain, ECoreType.Xray);
+        foreach (var item in new[] { n1, n2, wg, group, chain })
+        {
+            context.AllProxiesMap[item.IndexId] = item;
+        }
+
+        var result = new CoreConfigV2rayService(context).GenerateClientConfigContent();
+
+        await result.Success.Should().BeTrue();
+        var cfg = JsonUtils.Deserialize<V2rayConfig>(result.Data!.ToString())!;
+
+        // exactly one WireGuard identity, dialing through the loopback
+        var wgOutbounds = cfg.outbounds.Where(o => o.protocol == "wireguard").ToList();
+        await wgOutbounds.Count.Should().BeEqualTo(1);
+        await wgOutbounds[0].tag.Should().BeEqualTo(Global.ProxyTag);
+        await wgOutbounds[0].settings.peers![0].preSharedKey.Should().NotBeNull();
+
+        var loopback = cfg.outbounds.Single(o => o.protocol == "loopback");
+        await wgOutbounds[0].streamSettings.sockopt.dialerProxy.Should().BeEqualTo(loopback.tag);
+
+        // the loopback re-enters routing and is balanced over the group members
+        const string groupTag = "chain-proxy-1-group";
+        var rule = cfg.routing.rules.First();
+        await rule.inboundTag!.Should().Contain(loopback.settings.inboundTag!);
+        await rule.balancerTag.Should().BeEqualTo(groupTag + Global.BalancerTagSuffix);
+        await cfg.routing.balancers!.Should().Contain(b => b.tag == groupTag + Global.BalancerTagSuffix);
+        await cfg.observatory!.subjectSelector.Should().Contain(groupTag);
+        await cfg.outbounds.Count(o => o.tag.StartsWith(groupTag + "-", StringComparison.Ordinal)).Should().BeEqualTo(2);
+    }
+
+    [Test]
+    public async Task GenerateClientConfigContent_PolicyGroup_ShouldSkipPlaintextVlessToPublicAddress()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.Xray);
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+
+        var tls = CoreConfigTestFactory.CreateVlessNode(ECoreType.Xray, "v1", "tls", "example.com", Global.StreamSecurity);
+        var plainPublic = CoreConfigTestFactory.CreateVlessNode(ECoreType.Xray, "v2", "plain-public", "8.8.8.8", string.Empty);
+        var plainPrivate = CoreConfigTestFactory.CreateVlessNode(ECoreType.Xray, "v3", "plain-lan", "192.168.1.5", string.Empty);
+        var group = CoreConfigTestFactory.CreatePolicyGroupNode(ECoreType.Xray, "g1", "group",
+            [tls.IndexId, plainPublic.IndexId, plainPrivate.IndexId]);
+
+        var context = CoreConfigTestFactory.CreateContext(config, group, ECoreType.Xray);
+        foreach (var item in new[] { tls, plainPublic, plainPrivate, group })
+        {
+            context.AllProxiesMap[item.IndexId] = item;
+        }
+
+        var result = new CoreConfigV2rayService(context).GenerateClientConfigContent();
+
+        await result.Success.Should().BeTrue();
+        var cfg = JsonUtils.Deserialize<V2rayConfig>(result.Data!.ToString())!;
+        var memberTags = cfg.outbounds.Where(o => o.protocol == "vless").Select(o => o.tag).ToList();
+        await memberTags.Should().Contain(t => t.EndsWith("-tls", StringComparison.Ordinal));
+        await memberTags.Should().Contain(t => t.EndsWith("-plain-lan", StringComparison.Ordinal));
+        await memberTags.Any(t => t.EndsWith("-plain-public", StringComparison.Ordinal)).Should().BeFalse();
+    }
+
+    [Test]
     public async Task GenerateClientConfigContent_RoutingSplit_DirectAndBlock_ShouldApplyRules()
     {
         var config = CoreConfigTestFactory.CreateConfig(ECoreType.Xray);

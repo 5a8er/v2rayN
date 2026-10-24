@@ -126,6 +126,49 @@ internal static class CoreConfigTestFactory
         };
     }
 
+    public static ProfileItem CreateWireguardNode(ECoreType coreType, string indexId = "node-wg-1",
+        string remarks = "demo-wg")
+    {
+        var node = new ProfileItem
+        {
+            IndexId = indexId,
+            ConfigType = EConfigType.WireGuard,
+            CoreType = coreType,
+            Remarks = remarks,
+            Address = "203.0.113.10",
+            Port = 51820,
+            Password = "aGVsbG8taGVsbG8taGVsbG8taGVsbG8taGVsbG8tMTI=",
+            Subid = string.Empty,
+        };
+        node.SetProtocolExtra(node.GetProtocolExtra() with
+        {
+            WgPublicKey = "d29ybGQtd29ybGQtd29ybGQtd29ybGQtd29ybGQtMTI=",
+            WgPresharedKey = "cHNrLXBzay1wc2stcHNrLXBzay1wc2stcHNrLXBzazE=",
+            WgInterfaceAddress = "10.0.0.2/32",
+        });
+        return node;
+    }
+
+    public static ProfileItem CreateVlessNode(ECoreType coreType, string indexId, string remarks,
+        string address, string streamSecurity)
+    {
+        var node = new ProfileItem
+        {
+            IndexId = indexId,
+            ConfigType = EConfigType.VLESS,
+            CoreType = coreType,
+            Remarks = remarks,
+            Address = address,
+            Port = 443,
+            Password = Guid.NewGuid().ToString(),
+            Network = nameof(ETransport.ws),
+            StreamSecurity = streamSecurity,
+            Subid = string.Empty,
+        };
+        node.SetProtocolExtra(node.GetProtocolExtra() with { VlessEncryption = Global.None, Flow = string.Empty });
+        return node;
+    }
+
     public static ProfileItem CreateHttpNode(ECoreType coreType, string indexId = "node-http-1",
         string remarks = "demo-http")
     {

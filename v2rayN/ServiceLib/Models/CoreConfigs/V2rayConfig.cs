@@ -175,6 +175,9 @@ public class Outboundsettings4Ray
     public string? password { get; set; }
 
     public bool? uot { get; set; }
+
+    // loopback outbound
+    public string? inboundTag { get; set; }
 }
 
 public class WireguardPeer4Ray

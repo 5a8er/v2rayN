@@ -113,4 +113,24 @@ public partial class CoreConfigV2rayService
         _coreConfig.routing.balancers ??= [];
         _coreConfig.routing.balancers.Add(balancer);
     }
+
+    /// <summary>
+    /// Wires every loopback recorded while building chains to its group's balancer.
+    /// The rule goes first so user routing rules never catch the carrier traffic.
+    /// </summary>
+    private void ApplyLoopbackRoutes()
+    {
+        foreach (var route in context.LoopbackRoutes)
+        {
+            GenObservatory(route.MultipleLoad, route.Selector);
+            GenBalancer(route.MultipleLoad, route.Selector);
+            _coreConfig.routing.rules.Insert(0, new RulesItem4Ray
+            {
+                type = "field",
+                inboundTag = [route.InboundTag],
+                balancerTag = route.Selector + Global.BalancerTagSuffix,
+            });
+        }
+        context.LoopbackRoutes.Clear();
+    }
 }

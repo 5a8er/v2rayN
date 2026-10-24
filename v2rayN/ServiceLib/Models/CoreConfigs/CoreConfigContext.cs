@@ -32,4 +32,10 @@ public record CoreConfigContext
 
     // Generation Context
     public Dictionary<object, string> CustomOutboundMap { get; init; } = new();
+
+    // Groups reached through a loopback outbound instead of cloning the downstream chain;
+    // each entry needs an observatory, a balancer and an inboundTag routing rule.
+    public List<LoopbackRoute> LoopbackRoutes { get; init; } = [];
 }
+
+public record LoopbackRoute(string InboundTag, string Selector, EMultipleLoad MultipleLoad);
