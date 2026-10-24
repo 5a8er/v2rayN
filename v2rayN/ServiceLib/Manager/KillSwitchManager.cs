@@ -18,6 +18,7 @@ public class KillSwitchManager
     private const string TableName = "v2rayn_killswitch";
     private const string InstalledRuleSetPath = "/etc/v2rayn/killswitch.nft";
     private const string UnitName = "v2rayn-killswitch.service";
+    private const string CheckUnitName = "v2rayn-killswitch-check";
 
     private static readonly string[] _privateV4 =
         ["10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "224.0.0.0/4", "255.255.255.255"];
@@ -131,41 +132,79 @@ public class KillSwitchManager
         var ruleSet = BuildRuleSet(entryIps, ResolveDirectDnsAddresses(context.AppConfig));
         var ruleSetPath = Utils.GetBinConfigPath("killswitch.nft");
         await File.WriteAllTextAsync(ruleSetPath, ruleSet);
-        var script = $"""
+        return await RunAsRootAsync("killswitch_apply.sh", BuildApplyScript(), ruleSetPath);
+    }
+
+    /// <summary>Root script: loads the rule set ($1), installs it for boot and keeps the watchdog timer enabled.</summary>
+    public static string BuildApplyScript()
+    {
+        // Besides the boot-time load, a root timer re-checks the live table every 15 s and reloads
+        // it if something (a ruleset flush, another firewall tool) removed it, even while v2rayN
+        // is closed. Units are rewritten only when they differ, so updates reach old installs.
+        return $$"""
             #!/bin/bash
             set -e
             nft -f "$1"
-            install -D -m 644 "$1" {InstalledRuleSetPath}
-            unit=/etc/systemd/system/{UnitName}
-            if [ ! -f "$unit" ]; then
-              cat > "$unit" <<'EOF'
+            install -D -m 644 "$1" {{InstalledRuleSetPath}}
+
+            changed=0
+            write_unit() {
+              tmp=$(mktemp)
+              cat > "$tmp"
+              if ! cmp -s "$tmp" "$1"; then install -m 644 "$tmp" "$1"; changed=1; fi
+              rm -f "$tmp"
+            }
+            write_unit /etc/systemd/system/{{UnitName}} <<'EOF'
             [Unit]
             Description=v2rayN kill switch (nftables)
             DefaultDependencies=no
             Before=network-pre.target
             Wants=network-pre.target
-            ConditionPathExists={InstalledRuleSetPath}
+            ConditionPathExists={{InstalledRuleSetPath}}
 
             [Service]
             Type=oneshot
             RemainAfterExit=yes
-            ExecStart=/usr/sbin/nft -f {InstalledRuleSetPath}
+            ExecStart=/usr/sbin/nft -f {{InstalledRuleSetPath}}
 
             [Install]
             WantedBy=sysinit.target
             EOF
-              systemctl daemon-reload
-              systemctl enable {UnitName}
-            fi
+            write_unit /etc/systemd/system/{{CheckUnitName}}.service <<'EOF'
+            [Unit]
+            Description=v2rayN kill switch watchdog
+            ConditionPathExists={{InstalledRuleSetPath}}
+
+            [Service]
+            Type=oneshot
+            SyslogLevel=warning
+            LogLevelMax=warning
+            ExecStart=/bin/sh -c 'nft list table inet {{TableName}} >/dev/null 2>&1 || { echo "kill switch table missing, reloading"; nft -f {{InstalledRuleSetPath}}; }'
+            EOF
+            write_unit /etc/systemd/system/{{CheckUnitName}}.timer <<'EOF'
+            [Unit]
+            Description=Re-check the v2rayN kill switch every 15 s
+
+            [Timer]
+            OnBootSec=10s
+            OnUnitActiveSec=15s
+            AccuracySec=1s
+
+            [Install]
+            WantedBy=timers.target
+            EOF
+            if [ "$changed" = 1 ]; then systemctl daemon-reload; fi
+            systemctl enable {{UnitName}} >/dev/null 2>&1
+            systemctl enable --now {{CheckUnitName}}.timer >/dev/null 2>&1
             """;
-        return await RunAsRootAsync("killswitch_apply.sh", script, ruleSetPath);
     }
 
-    /// <summary>Removes the rule set and its boot-time copy. Returns an error message, or null.</summary>
+    /// <summary>Removes the rule set, its boot-time copy and the watchdog timer. Returns an error message, or null.</summary>
     public async Task<string?> DisableAsync()
     {
         var script = $"""
             #!/bin/bash
+            systemctl disable --now {CheckUnitName}.timer >/dev/null 2>&1 || true
             nft delete table inet {TableName} 2>/dev/null || true
             rm -f {InstalledRuleSetPath}
             """;

@@ -23,6 +23,18 @@ public class KillSwitchManagerTests
     }
 
     [Test]
+    public async Task BuildApplyScript_KeepsWatchdogTimerEnabled()
+    {
+        var script = KillSwitchManager.BuildApplyScript();
+
+        await script.Should().Contain("nft -f \"$1\"");
+        // the watchdog reloads the live table whenever it is missing
+        await script.Should().Contain("nft list table inet v2rayn_killswitch >/dev/null 2>&1 || {");
+        await script.Should().Contain("OnUnitActiveSec=15s");
+        await script.Should().Contain("systemctl enable --now v2rayn-killswitch-check.timer");
+    }
+
+    [Test]
     public async Task BuildRuleSet_EmptyFamily_RendersSetWithoutElements()
     {
         var ruleSet = KillSwitchManager.BuildRuleSet([IPAddress.Parse("203.0.113.7")], []);
