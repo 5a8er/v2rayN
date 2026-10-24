@@ -611,25 +611,21 @@ public partial class ProfilesViewModel : MyReactiveObject
             return;
         }
         var active = await AppManager.Instance.GetProfileItem(_config.IndexId);
-        if (active is null || !active.ConfigType.IsGroupType())
+        if (active is null || await KillSwitchManager.GetEntryGroupIdAsync(active) is null)
         {
-            NoticeManager.Instance.Enqueue("The active server is a single server; a carrier only applies to an active chain or group");
+            NoticeManager.Instance.Enqueue("The active server has no entry group; an entry server only applies to a chain or group");
             return;
         }
 
+        // A hand-picked entry turns auto entry off, so it is used with the switch on or off
         var killSwitch = _config.KillSwitchItem;
-        killSwitch.PinnedIndexId = item.IndexId;
-        killSwitch.PinnedForIndexId = active.IndexId;
+        killSwitch.ManualCarriers ??= [];
+        killSwitch.ManualCarriers[active.IndexId] = item.IndexId;
+        killSwitch.AutoEntry = false;
+        StatusBarViewModel.Instance.AutoEntry = false;
         await ConfigHandler.SaveConfig(_config);
-        if (killSwitch.Enabled)
-        {
-            NoticeManager.Instance.Enqueue($"Kill switch: {active.Remarks} now enters through {item.Remarks}");
-            Reload();
-        }
-        else
-        {
-            NoticeManager.Instance.Enqueue($"Kill switch carrier set to {item.Remarks}; used when the kill switch is turned on");
-        }
+        NoticeManager.Instance.Enqueue($"{active.Remarks} now enters through {item.Remarks} (auto entry off)");
+        Reload();
     }
 
     public async Task SetDefaultServer()

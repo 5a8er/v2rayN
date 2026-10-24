@@ -144,8 +144,18 @@ public class KillSwitchItem
 {
     public bool Enabled { get; set; }
 
-    // While the switch is on, the entry group of PinnedForIndexId is frozen to PinnedIndexId:
-    // no carrier probing or switching until the switch is turned off again.
+    // On: the entry (carrier) of a chain or group is picked by observatory delay. Off: the
+    // carrier chosen by hand for that chain is used, whether the switch is on or not.
+    public bool AutoEntry { get; set; } = true;
+
+    // chain/group IndexId -> carrier IndexId chosen with "Use as entry server"
+    public Dictionary<string, string>? ManualCarriers { get; set; }
+
+    // chain/group IndexId -> best carrier frozen while the switch is on; cleared when it goes off,
+    // so each chain gets a fresh pick the next time.
+    public Dictionary<string, string>? FrozenCarriers { get; set; }
+
+    // Single pin of older builds, moved into FrozenCarriers on load
     public string? PinnedIndexId { get; set; }
     public string? PinnedForIndexId { get; set; }
 }

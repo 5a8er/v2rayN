@@ -65,6 +65,24 @@
             </StackPanel>
 
             <StackPanel
+                x:Name="spAutoEntry"
+                Margin="{StaticResource MarginLr8}"
+                VerticalAlignment="Center"
+                DockPanel.Dock="Left"
+                Orientation="Horizontal"
+                ToolTip.Tip="On: the fastest carrier is picked for each chain (frozen while the kill switch is on). Off: each chain enters through the server you chose with 'Use as entry server'.">
+                <TextBlock
+                    Margin="{StaticResource MarginLr8}"
+                    VerticalAlignment="Center"
+                    Text="{x:Static resx:ResUI.TbAutoEntry}" />
+                <ToggleSwitch
+                    x:Name="togAutoEntry"
+                    Margin="{StaticResource Margin4}"
+                    HorizontalAlignment="Center"
+                    Theme="{DynamicResource SimpleToggleSwitch}" />
+            </StackPanel>
+
+            <StackPanel
                 Margin="{StaticResource MarginLr8}"
                 VerticalAlignment="Center"
                 DockPanel.Dock="Left"
@@ -87,6 +105,15 @@
                     DisplayMemberBinding="{Binding Remarks}"
                     ItemsSource="{Binding RoutingItems}"
                     ToolTip.Tip="{x:Static resx:ResUI.menuRouting}" />
+            </StackPanel>
+
+            <StackPanel
+                Margin="{StaticResource MarginLr8}"
+                VerticalAlignment="Center"
+                DockPanel.Dock="Left">
+                <TextBlock x:Name="txtEntryDisplay" />
+                <Border Margin="1" />
+                <TextBlock x:Name="txtExitDisplay" />
             </StackPanel>
 
             <StackPanel Margin="{StaticResource MarginLr8}" VerticalAlignment="Center">

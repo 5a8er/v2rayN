@@ -29,24 +29,95 @@ public class KillSwitchManager
 
     #region Carrier pinning
 
+    public enum ECarrierMode
+    {
+        None,
+        Manual,
+        Frozen,
+        Auto,
+    }
+
+    public sealed record EntryExitInfo(ProfileItem? Entry, ECarrierMode Mode, ProfileItem? Exit);
+
+    /// <summary>Moves the single pin of older builds into the per-chain map.</summary>
+    public static void MigrateLegacyPin(KillSwitchItem item)
+    {
+        if (item.PinnedIndexId.IsNotEmpty() && item.PinnedForIndexId.IsNotEmpty())
+        {
+            item.FrozenCarriers ??= [];
+            item.FrozenCarriers.TryAdd(item.PinnedForIndexId!, item.PinnedIndexId!);
+        }
+        item.PinnedIndexId = null;
+        item.PinnedForIndexId = null;
+    }
+
     /// <summary>
-    /// With the switch on, freezes the entry group of the pinned profile to the pinned member:
-    /// a policy group becomes that member, a chain gets it as its first hop.
+    /// The carrier a chain or group must enter through, if any: the hand-picked one while auto
+    /// entry is off, else the one frozen by the switch. Null means the balancer picks live.
+    /// </summary>
+    public static (string? CarrierId, ECarrierMode Mode) GetCarrier(KillSwitchItem item, string chainId)
+    {
+        if (!item.AutoEntry && item.ManualCarriers?.GetValueOrDefault(chainId) is { } manual)
+        {
+            return (manual, ECarrierMode.Manual);
+        }
+        if (item.Enabled && item.FrozenCarriers?.GetValueOrDefault(chainId) is { } frozen)
+        {
+            return (frozen, ECarrierMode.Frozen);
+        }
+        return (null, ECarrierMode.None);
+    }
+
+    /// <summary>The group a chain or group picks its carrier from; null when there is nothing to pick.</summary>
+    public static async Task<string?> GetEntryGroupIdAsync(ProfileItem node)
+    {
+        if (node.ConfigType == EConfigType.PolicyGroup)
+        {
+            return node.IndexId;
+        }
+        if (node.ConfigType != EConfigType.ProxyChain)
+        {
+            return null;
+        }
+        var children = Utils.String2List(node.GetProtocolExtra().ChildItems) ?? [];
+        var first = children.Count > 0 ? await AppManager.Instance.GetProfileItem(children[0]) : null;
+        return first?.ConfigType.IsGroupType() == true ? first.IndexId : null;
+    }
+
+    /// <summary>
+    /// Freezes the entry group of the active chain or group to its carrier: a policy group becomes
+    /// that member, a chain gets it as its first hop. With the switch on and nothing frozen yet,
+    /// a carrier already frozen for another chain on the same entry group is reused, so switching
+    /// between chains never runs unfrozen.
     /// </summary>
     public static async Task<ProfileItem> ApplyPinAsync(Config config, ProfileItem node)
     {
         var item = config.KillSwitchItem;
-        if (item is not { Enabled: true }
-            || item.PinnedIndexId.IsNullOrEmpty()
-            || item.PinnedForIndexId != node.IndexId)
+        var entryGroupId = await GetEntryGroupIdAsync(node);
+        if (entryGroupId is null)
         {
             return node;
         }
 
-        var pinned = await AppManager.Instance.GetProfileItem(item.PinnedIndexId!);
+        var (carrierId, _) = GetCarrier(item, node.IndexId);
+        if (carrierId is null && item.Enabled)
+        {
+            carrierId = await FindSiblingFrozenCarrierAsync(item, node.IndexId, entryGroupId);
+            if (carrierId is not null)
+            {
+                item.FrozenCarriers ??= [];
+                item.FrozenCarriers[node.IndexId] = carrierId;
+            }
+        }
+        if (carrierId is null)
+        {
+            return node;
+        }
+
+        var pinned = await AppManager.Instance.GetProfileItem(carrierId);
         if (pinned is null)
         {
-            Logging.SaveLog($"{_tag}: pinned carrier {item.PinnedIndexId} no longer exists, entry group stays unpinned");
+            Logging.SaveLog($"{_tag}: carrier {carrierId} no longer exists, entry group stays unpinned");
             return node;
         }
 
@@ -54,22 +125,66 @@ public class KillSwitchManager
         {
             return pinned;
         }
-        if (node.ConfigType != EConfigType.ProxyChain)
-        {
-            return node;
-        }
-
         var children = Utils.String2List(node.GetProtocolExtra().ChildItems) ?? [];
-        var first = children.Count > 0 ? await AppManager.Instance.GetProfileItem(children[0]) : null;
-        if (first is null || !first.ConfigType.IsGroupType())
-        {
-            return node;
-        }
-
         children[0] = pinned.IndexId;
         var pinnedChain = JsonUtils.DeepCopy(node)!;
         pinnedChain.SetProtocolExtra(pinnedChain.GetProtocolExtra() with { ChildItems = Utils.List2String(children) });
         return pinnedChain;
+    }
+
+    private static async Task<string?> FindSiblingFrozenCarrierAsync(KillSwitchItem item, string chainId, string entryGroupId)
+    {
+        foreach (var (otherId, carrierId) in item.FrozenCarriers ?? [])
+        {
+            if (otherId == chainId)
+            {
+                continue;
+            }
+            var other = await AppManager.Instance.GetProfileItem(otherId);
+            if (other is not null && await GetEntryGroupIdAsync(other) == entryGroupId)
+            {
+                return carrierId;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// What the active profile enters and leaves through, for display. A carrier that is not
+    /// fixed is the one the balancer currently rates best.
+    /// </summary>
+    public static async Task<EntryExitInfo> GetEntryExitAsync(Config config, ProfileItem active, CoreConfigContext? runningContext)
+    {
+        if (!active.ConfigType.IsGroupType())
+        {
+            return new(active, ECarrierMode.None, active);
+        }
+
+        ProfileItem? entry = null;
+        var mode = ECarrierMode.None;
+        if (await GetEntryGroupIdAsync(active) is not null)
+        {
+            var (carrierId, carrierMode) = GetCarrier(config.KillSwitchItem, active.IndexId);
+            if (carrierId is null)
+            {
+                carrierId = await PickBestCarrierAsync(runningContext);
+                carrierMode = ECarrierMode.Auto;
+            }
+            entry = carrierId is null ? null : await AppManager.Instance.GetProfileItem(carrierId);
+            mode = carrierMode;
+        }
+
+        ProfileItem? exit = entry;
+        if (active.ConfigType == EConfigType.ProxyChain)
+        {
+            var children = Utils.String2List(active.GetProtocolExtra().ChildItems) ?? [];
+            if (entry is null && children.Count > 0)
+            {
+                entry = await AppManager.Instance.GetProfileItem(children[0]);
+            }
+            exit = children.Count > 0 ? await AppManager.Instance.GetProfileItem(children[^1]) : null;
+        }
+        return new(entry, mode, exit);
     }
 
     /// <summary>

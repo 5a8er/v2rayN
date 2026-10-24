@@ -88,6 +88,7 @@ public static class ConfigHandler
             InitialWindowsSize = 0,
         };
         config.KillSwitchItem ??= new();
+        KillSwitchManager.MigrateLegacyPin(config.KillSwitchItem);
         config.TunModeItem ??= new TunModeItem
         {
             EnableTun = false,

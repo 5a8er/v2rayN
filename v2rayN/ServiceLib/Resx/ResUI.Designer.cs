@@ -3214,6 +3214,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Auto entry.
+        /// </summary>
+        public static string TbAutoEntry {
+            get {
+                return ResourceManager.GetString("TbAutoEntry", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Pin / unpin at top.
         /// </summary>
         public static string menuTogglePin {

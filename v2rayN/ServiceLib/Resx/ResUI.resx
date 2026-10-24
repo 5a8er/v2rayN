@@ -906,11 +906,14 @@
   <data name="TbEnableKillSwitch" xml:space="preserve">
     <value>Kill switch</value>
   </data>
+  <data name="TbAutoEntry" xml:space="preserve">
+    <value>Auto entry</value>
+  </data>
   <data name="menuTogglePin" xml:space="preserve">
     <value>Pin / unpin at top</value>
   </data>
   <data name="menuUseAsKillSwitchCarrier" xml:space="preserve">
-    <value>Use as kill-switch carrier</value>
+    <value>Use as entry server for the active chain</value>
   </data>
   <data name="TbSettingsNewPort4LAN" xml:space="preserve">
     <value>New Port for LAN</value>

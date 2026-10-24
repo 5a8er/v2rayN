@@ -9,6 +9,8 @@ public partial class StatusBarViewModel : MyReactiveObject
     public EventChannel<bool?> ShowHideWindowRequested { get; } = new();
 
     private static readonly Lazy<StatusBarViewModel> _instance = new(() => new());
+    private int _autoFreezeRunning;
+    private string? _exitIp;
     public static StatusBarViewModel Instance => _instance.Value;
 
     public EventChannel<string> SetDefaultServerRequested { get; } = new();
@@ -105,6 +107,15 @@ public partial class StatusBarViewModel : MyReactiveObject
     public partial bool BlKillSwitchSupported { get; set; }
 
     [Reactive]
+    public partial bool AutoEntry { get; set; }
+
+    [Reactive]
+    public partial string EntryDisplay { get; set; }
+
+    [Reactive]
+    public partial string ExitDisplay { get; set; }
+
+    [Reactive]
     public partial bool BlIsNonWindows { get; set; }
 
     #endregion UI
@@ -129,6 +140,7 @@ public partial class StatusBarViewModel : MyReactiveObject
 
         BlKillSwitchSupported = KillSwitchManager.IsSupported;
         EnableKillSwitch = BlKillSwitchSupported && _config.KillSwitchItem.Enabled;
+        AutoEntry = _config.KillSwitchItem.AutoEntry;
 
         #region WhenAnyValue && ReactiveCommand
 
@@ -150,6 +162,9 @@ public partial class StatusBarViewModel : MyReactiveObject
 
         this.WhenAnyValue(x => x.EnableKillSwitch)
             .SubscribeAsync(async _ => await DoEnableKillSwitch());
+
+        this.WhenAnyValue(x => x.AutoEntry)
+            .SubscribeAsync(async _ => await DoAutoEntry());
 
         CopyProxyCmdToClipboardCmd = ReactiveCommand.CreateFromTask(async () =>
         {
@@ -235,6 +250,16 @@ public partial class StatusBarViewModel : MyReactiveObject
         await ChangeSystemProxyAsync(_config.SystemProxyItem.SysProxyType, false);
 
         BlRouting = true;
+
+        // A carrier the balancer picks live can change at any time
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            while (await timer.WaitForNextTickAsync())
+            {
+                RxSchedulers.MainThreadScheduler.Schedule(() => _ = RefreshEntryExitAsync());
+            }
+        });
     }
 
     private async Task CopyProxyCmdToClipboard()
@@ -345,6 +370,8 @@ public partial class StatusBarViewModel : MyReactiveObject
         {
             ProfileExManager.Instance.SetTestIpInfo(item.IndexId, ip);
         }
+        _exitIp = result.Time > 0 ? result.Ip : null;
+        RxSchedulers.MainThreadScheduler.Schedule(() => _ = RefreshEntryExitAsync());
         if (result.Time > 0)
         {
             ProfileExManager.Instance.SetTestDelay(item.IndexId, result.Time);
@@ -494,28 +521,30 @@ public partial class StatusBarViewModel : MyReactiveObject
 
         if (wanted)
         {
-            // Freeze the carrier the balancer currently rates best; a profile without
-            // an entry group has nothing to pin.
-            var runningContext = CoreManager.Instance.RunningContext;
-            var chosen = _config.KillSwitchItem.PinnedForIndexId == _config.IndexId
-                ? _config.KillSwitchItem.PinnedIndexId
-                : null;
-            var pinned = chosen ?? await KillSwitchManager.PickBestCarrierAsync(runningContext);
-            if (pinned is null && runningContext?.OutboundTagIndexIds.Count > 0)
+            // Freeze the carrier the balancer currently rates best, unless this chain enters
+            // through a hand-picked one. Other chains get theirs when they are started.
+            var item = _config.KillSwitchItem;
+            var active = await ConfigHandler.GetDefaultServer(_config);
+            var frozen = new Dictionary<string, string>();
+            var needsPick = active is not null
+                && await KillSwitchManager.GetEntryGroupIdAsync(active) is not null
+                && KillSwitchManager.GetCarrier(item, active.IndexId).Mode != KillSwitchManager.ECarrierMode.Manual;
+            if (needsPick)
             {
-                NoticeManager.Instance.SendMessageEx("Kill switch: no healthy carrier found yet, try again in a few seconds");
-                return;
+                var best = await KillSwitchManager.PickBestCarrierAsync(CoreManager.Instance.RunningContext);
+                if (best is null)
+                {
+                    NoticeManager.Instance.SendMessageEx("Kill switch: no healthy carrier found yet, try again in a few seconds");
+                    return;
+                }
+                frozen[active!.IndexId] = best;
             }
-            _config.KillSwitchItem = new KillSwitchItem
-            {
-                Enabled = true,
-                PinnedIndexId = pinned,
-                PinnedForIndexId = pinned is null ? null : _config.IndexId,
-            };
-            var pinnedItem = pinned is null ? null : await AppManager.Instance.GetProfileItem(pinned);
-            NoticeManager.Instance.SendMessageEx(pinnedItem is null
+            item.Enabled = true;
+            item.FrozenCarriers = frozen;
+            var carrier = frozen.Count > 0 ? await AppManager.Instance.GetProfileItem(frozen.Values.First()) : null;
+            NoticeManager.Instance.SendMessageEx(carrier is null
                 ? "Kill switch on"
-                : $"Kill switch on, carrier frozen to {pinnedItem.Remarks}");
+                : $"Kill switch on, carrier frozen to {carrier.Remarks}");
         }
         else
         {
@@ -525,13 +554,80 @@ public partial class StatusBarViewModel : MyReactiveObject
                 NoticeManager.Instance.SendMessageEx(error);
                 return;
             }
-            _config.KillSwitchItem = new KillSwitchItem();
-            NoticeManager.Instance.SendMessageEx("Kill switch off, carriers are tested again");
+            _config.KillSwitchItem.Enabled = false;
+            _config.KillSwitchItem.FrozenCarriers = null;
+            NoticeManager.Instance.SendMessageEx(_config.KillSwitchItem.AutoEntry
+                ? "Kill switch off, carriers are tested again"
+                : "Kill switch off");
         }
 
         EnableKillSwitch = wanted;
         await ConfigHandler.SaveConfig(_config);
         ReloadRequested.Publish();
+    }
+
+    private async Task DoAutoEntry()
+    {
+        if (_config.KillSwitchItem.AutoEntry == AutoEntry)
+        {
+            return;
+        }
+        _config.KillSwitchItem.AutoEntry = AutoEntry;
+        NoticeManager.Instance.SendMessageEx(AutoEntry
+            ? "Auto entry on: the best carrier is picked for each chain"
+            : "Auto entry off: chains use the entry server you picked for them");
+        await ConfigHandler.SaveConfig(_config);
+        ReloadRequested.Publish();
+    }
+
+    /// <summary>
+    /// After a chain started under the kill switch without a carrier (nothing frozen for it or for
+    /// another chain on the same entry group), waits for the first observatory round, freezes the
+    /// best carrier and reloads. Exit still only goes through the chain meanwhile.
+    /// </summary>
+    public async Task AutoFreezeCarrierAsync()
+    {
+        if (Interlocked.Exchange(ref _autoFreezeRunning, 1) == 1)
+        {
+            return;
+        }
+        try
+        {
+            var item = _config.KillSwitchItem;
+            var active = await ConfigHandler.GetDefaultServer(_config);
+            if (!item.Enabled || active is null
+                || await KillSwitchManager.GetEntryGroupIdAsync(active) is null
+                || KillSwitchManager.GetCarrier(item, active.IndexId).CarrierId is not null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < 20; i++)
+            {
+                await Task.Delay(3000);
+                if (!item.Enabled || _config.IndexId != active.IndexId)
+                {
+                    return;
+                }
+                var best = await KillSwitchManager.PickBestCarrierAsync(CoreManager.Instance.RunningContext);
+                if (best is null)
+                {
+                    continue;
+                }
+                item.FrozenCarriers ??= [];
+                item.FrozenCarriers[active.IndexId] = best;
+                await ConfigHandler.SaveConfig(_config);
+                var carrier = await AppManager.Instance.GetProfileItem(best);
+                NoticeManager.Instance.SendMessageEx($"Kill switch: {active.Remarks} frozen to {carrier?.Remarks}");
+                ReloadRequested.Publish();
+                return;
+            }
+            NoticeManager.Instance.SendMessageEx("Kill switch: no healthy carrier found for this chain yet");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _autoFreezeRunning, 0);
+        }
     }
 
     private bool AllowEnableTun()
@@ -578,6 +674,31 @@ public partial class StatusBarViewModel : MyReactiveObject
             InboundLanDisplay = $"{ResUI.LabLAN}:{Global.None}";
         }
         await Task.CompletedTask;
+    }
+
+    public async Task RefreshEntryExitAsync()
+    {
+        var active = await ConfigHandler.GetDefaultServer(_config);
+        if (active is null)
+        {
+            EntryDisplay = ExitDisplay = string.Empty;
+            return;
+        }
+        var info = await KillSwitchManager.GetEntryExitAsync(_config, active, CoreManager.Instance.RunningContext);
+        var mode = info.Mode switch
+        {
+            KillSwitchManager.ECarrierMode.Manual => " [📌 manual]",
+            KillSwitchManager.ECarrierMode.Frozen => " [❄ frozen]",
+            KillSwitchManager.ECarrierMode.Auto => " [auto]",
+            _ => string.Empty,
+        };
+        EntryDisplay = info.Entry is null
+            ? "Entry: -"
+            : $"Entry: {info.Entry.Remarks} · {info.Entry.Address}{mode}";
+        var exitIp = _exitIp.IsNullOrEmpty() ? "-" : _exitIp;
+        ExitDisplay = info.Exit is null
+            ? $"Exit IP: {exitIp}"
+            : $"Exit: {info.Exit.Remarks} → {exitIp}";
     }
 
     public async Task UpdateStatistics(ServerSpeedItem update)

@@ -35,6 +35,49 @@ public class KillSwitchManagerTests
     }
 
     [Test]
+    public async Task GetCarrier_ManualWinsOnlyWhileAutoEntryIsOff()
+    {
+        var item = new KillSwitchItem
+        {
+            Enabled = true,
+            ManualCarriers = new() { ["chain"] = "manual" },
+            FrozenCarriers = new() { ["chain"] = "frozen" },
+        };
+
+        await KillSwitchManager.GetCarrier(item, "chain").Should().BeEqualTo(("frozen", KillSwitchManager.ECarrierMode.Frozen));
+
+        item.AutoEntry = false;
+        await KillSwitchManager.GetCarrier(item, "chain").Should().BeEqualTo(("manual", KillSwitchManager.ECarrierMode.Manual));
+    }
+
+    [Test]
+    public async Task GetCarrier_FrozenOnlyWhileSwitchIsOn_ManualAlways()
+    {
+        var item = new KillSwitchItem
+        {
+            Enabled = false,
+            AutoEntry = false,
+            ManualCarriers = new() { ["a"] = "manual" },
+            FrozenCarriers = new() { ["b"] = "frozen" },
+        };
+
+        await KillSwitchManager.GetCarrier(item, "a").Should().BeEqualTo(("manual", KillSwitchManager.ECarrierMode.Manual));
+        await KillSwitchManager.GetCarrier(item, "b").Should().BeEqualTo(((string?)null, KillSwitchManager.ECarrierMode.None));
+    }
+
+    [Test]
+    public async Task MigrateLegacyPin_MovesSinglePinIntoFrozenMap()
+    {
+        var item = new KillSwitchItem { Enabled = true, PinnedIndexId = "carrier", PinnedForIndexId = "chain" };
+
+        KillSwitchManager.MigrateLegacyPin(item);
+
+        await item.FrozenCarriers!["chain"].Should().BeEqualTo("carrier");
+        await item.PinnedIndexId.Should().BeNull();
+        await item.PinnedForIndexId.Should().BeNull();
+    }
+
+    [Test]
     public async Task BuildRuleSet_EmptyFamily_RendersSetWithoutElements()
     {
         var ruleSet = KillSwitchManager.BuildRuleSet([IPAddress.Parse("203.0.113.7")], []);

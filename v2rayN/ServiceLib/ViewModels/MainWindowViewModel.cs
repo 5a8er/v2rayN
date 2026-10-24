@@ -710,6 +710,7 @@ public partial class MainWindowViewModel : MyReactiveObject
                 await SysProxyHandler.UpdateSysProxy(_config, false);
                 await Task.Delay(1000);
             });
+            _ = StatusBarViewModel.AutoFreezeCarrierAsync();
             RxSchedulers.MainThreadScheduler.Schedule(async () =>
             {
                 var result = await StatusBarViewModel.TestServerAvailability();
