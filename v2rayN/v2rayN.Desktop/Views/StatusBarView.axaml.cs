@@ -28,7 +28,9 @@ public partial class StatusBarView : ReactiveUserControl<StatusBarViewModel>
             this.Bind(ViewModel, vm => vm.EnableTun, v => v.togEnableTun.IsChecked).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.EnableKillSwitch, v => v.togEnableKillSwitch.IsChecked).DisposeWith(disposables);
             this.OneWayBind(ViewModel, vm => vm.BlKillSwitchSupported, v => v.spEnableKillSwitch.IsVisible).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.AutoEntry, v => v.togAutoEntry.IsChecked).DisposeWith(disposables);
+            this.Bind(ViewModel, vm => vm.EntryControl, v => v.togEntryControl.IsChecked).DisposeWith(disposables);
+            this.Bind(ViewModel, vm => vm.EntryModeSelected, v => v.cmbEntryMode.SelectedIndex).DisposeWith(disposables);
+            this.OneWayBind(ViewModel, vm => vm.EntryControl, v => v.cmbEntryMode.IsEnabled).DisposeWith(disposables);
             this.OneWayBind(ViewModel, vm => vm.EntryDisplay, v => v.txtEntryDisplay.Text).DisposeWith(disposables);
             this.OneWayBind(ViewModel, vm => vm.ExitDisplay, v => v.txtExitDisplay.Text).DisposeWith(disposables);
 

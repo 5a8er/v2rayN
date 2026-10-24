@@ -35,46 +35,63 @@ public class KillSwitchManagerTests
     }
 
     [Test]
-    public async Task GetCarrier_ManualWinsOnlyWhileAutoEntryIsOff()
+    public async Task GetCarrier_ManualModeUsesHandPick_ElseFrozen()
     {
         var item = new KillSwitchItem
         {
-            Enabled = true,
             ManualCarriers = new() { ["chain"] = "manual" },
-            FrozenCarriers = new() { ["chain"] = "frozen" },
+            FrozenCarriers = new() { ["chain"] = "frozen", ["other"] = "frozen2" },
         };
 
         await KillSwitchManager.GetCarrier(item, "chain").Should().BeEqualTo(("frozen", KillSwitchManager.ECarrierMode.Frozen));
 
-        item.AutoEntry = false;
+        item.EntryMode = EEntryMode.Manual;
+        await KillSwitchManager.GetCarrier(item, "chain").Should().BeEqualTo(("manual", KillSwitchManager.ECarrierMode.Manual));
+        // a chain without a hand pick still enters through its frozen best
+        await KillSwitchManager.GetCarrier(item, "other").Should().BeEqualTo(("frozen2", KillSwitchManager.ECarrierMode.Frozen));
+    }
+
+    [Test]
+    public async Task GetCarrier_EntryControlOff_PicksLive_RegardlessOfKillSwitch()
+    {
+        var item = new KillSwitchItem
+        {
+            Enabled = true,
+            EntryControl = false,
+            EntryMode = EEntryMode.Manual,
+            ManualCarriers = new() { ["chain"] = "manual" },
+            FrozenCarriers = new() { ["chain"] = "frozen" },
+        };
+
+        await KillSwitchManager.GetCarrier(item, "chain").Should().BeEqualTo(((string?)null, KillSwitchManager.ECarrierMode.None));
+
+        item.EntryControl = true;
+        item.Enabled = false;
         await KillSwitchManager.GetCarrier(item, "chain").Should().BeEqualTo(("manual", KillSwitchManager.ECarrierMode.Manual));
     }
 
     [Test]
-    public async Task GetCarrier_FrozenOnlyWhileSwitchIsOn_ManualAlways()
+    public async Task UnfreezeCarrier_ForgetsItForEveryChain()
     {
-        var item = new KillSwitchItem
-        {
-            Enabled = false,
-            AutoEntry = false,
-            ManualCarriers = new() { ["a"] = "manual" },
-            FrozenCarriers = new() { ["b"] = "frozen" },
-        };
+        var item = new KillSwitchItem { FrozenCarriers = new() { ["a"] = "dead", ["b"] = "dead", ["c"] = "ok" } };
 
-        await KillSwitchManager.GetCarrier(item, "a").Should().BeEqualTo(("manual", KillSwitchManager.ECarrierMode.Manual));
-        await KillSwitchManager.GetCarrier(item, "b").Should().BeEqualTo(((string?)null, KillSwitchManager.ECarrierMode.None));
+        KillSwitchManager.UnfreezeCarrier(item, "dead");
+
+        await item.FrozenCarriers.Should().HaveCount(1);
+        await item.FrozenCarriers.Should().ContainKey("c");
     }
 
     [Test]
-    public async Task MigrateLegacyPin_MovesSinglePinIntoFrozenMap()
+    public async Task MigrateLegacySettings_MovesPinAndAutoEntry()
     {
-        var item = new KillSwitchItem { Enabled = true, PinnedIndexId = "carrier", PinnedForIndexId = "chain" };
+        var item = new KillSwitchItem { Enabled = true, PinnedIndexId = "carrier", PinnedForIndexId = "chain", AutoEntry = false };
 
-        KillSwitchManager.MigrateLegacyPin(item);
+        KillSwitchManager.MigrateLegacySettings(item);
 
         await item.FrozenCarriers!["chain"].Should().BeEqualTo("carrier");
+        await item.EntryMode.Should().BeEqualTo(EEntryMode.Manual);
         await item.PinnedIndexId.Should().BeNull();
-        await item.PinnedForIndexId.Should().BeNull();
+        await item.AutoEntry.Should().BeNull();
     }
 
     [Test]

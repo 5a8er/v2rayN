@@ -65,21 +65,29 @@
             </StackPanel>
 
             <StackPanel
-                x:Name="spAutoEntry"
+                x:Name="spEntry"
                 Margin="{StaticResource MarginLr8}"
                 VerticalAlignment="Center"
                 DockPanel.Dock="Left"
                 Orientation="Horizontal"
-                ToolTip.Tip="On: the fastest carrier is picked for each chain (frozen while the kill switch is on). Off: each chain enters through the server you chose with 'Use as entry server'.">
+                ToolTip.Tip="Off: the app tests carriers and switches live. On: the entry follows the selected mode.">
                 <TextBlock
                     Margin="{StaticResource MarginLr8}"
                     VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.TbAutoEntry}" />
+                    Text="{x:Static resx:ResUI.TbEntry}" />
                 <ToggleSwitch
-                    x:Name="togAutoEntry"
+                    x:Name="togEntryControl"
                     Margin="{StaticResource Margin4}"
                     HorizontalAlignment="Center"
                     Theme="{DynamicResource SimpleToggleSwitch}" />
+                <ComboBox
+                    x:Name="cmbEntryMode"
+                    Width="160"
+                    Margin="{StaticResource MarginLr8}">
+                    <ComboBoxItem Content="{x:Static resx:ResUI.TbEntryModeManual}" ToolTip.Tip="Each chain enters through the server you picked with 'Use as entry server'" />
+                    <ComboBoxItem Content="{x:Static resx:ResUI.TbEntryModeFrozen}" ToolTip.Tip="The best server is frozen per chain until you change it" />
+                    <ComboBoxItem Content="{x:Static resx:ResUI.TbEntryModeFailover}" ToolTip.Tip="Like frozen, but a server that stays down for a minute is replaced by a fresh best pick" />
+                </ComboBox>
             </StackPanel>
 
             <StackPanel

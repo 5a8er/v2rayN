@@ -144,18 +144,21 @@ public class KillSwitchItem
 {
     public bool Enabled { get; set; }
 
-    // On: the entry (carrier) of a chain or group is picked by observatory delay. Off: the
-    // carrier chosen by hand for that chain is used, whether the switch is on or not.
-    public bool AutoEntry { get; set; } = true;
+    // On: the entry (carrier) of a chain or group follows EntryMode. Off: the balancer tests and
+    // switches carriers live. Independent of the firewall (Enabled).
+    public bool EntryControl { get; set; } = true;
+
+    public EEntryMode EntryMode { get; set; } = EEntryMode.Frozen;
 
     // chain/group IndexId -> carrier IndexId chosen with "Use as entry server"
     public Dictionary<string, string>? ManualCarriers { get; set; }
 
-    // chain/group IndexId -> best carrier frozen while the switch is on; cleared when it goes off,
+    // chain/group IndexId -> best carrier frozen for it; cleared when entry control goes off,
     // so each chain gets a fresh pick the next time.
     public Dictionary<string, string>? FrozenCarriers { get; set; }
 
-    // Single pin of older builds, moved into FrozenCarriers on load
+    // Settings of older builds, migrated on load
+    public bool? AutoEntry { get; set; }
     public string? PinnedIndexId { get; set; }
     public string? PinnedForIndexId { get; set; }
 }

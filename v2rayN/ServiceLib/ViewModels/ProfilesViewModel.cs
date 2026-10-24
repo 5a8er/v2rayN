@@ -617,14 +617,16 @@ public partial class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        // A hand-picked entry turns auto entry off, so it is used with the switch on or off
+        // A hand-picked entry switches entry control on in manual mode
         var killSwitch = _config.KillSwitchItem;
         killSwitch.ManualCarriers ??= [];
         killSwitch.ManualCarriers[active.IndexId] = item.IndexId;
-        killSwitch.AutoEntry = false;
-        StatusBarViewModel.Instance.AutoEntry = false;
+        killSwitch.EntryControl = true;
+        killSwitch.EntryMode = EEntryMode.Manual;
+        StatusBarViewModel.Instance.EntryControl = true;
+        StatusBarViewModel.Instance.EntryModeSelected = (int)EEntryMode.Manual;
         await ConfigHandler.SaveConfig(_config);
-        NoticeManager.Instance.Enqueue($"{active.Remarks} now enters through {item.Remarks} (auto entry off)");
+        NoticeManager.Instance.Enqueue($"{active.Remarks} now enters through {item.Remarks} (entry mode: manual)");
         Reload();
     }
 

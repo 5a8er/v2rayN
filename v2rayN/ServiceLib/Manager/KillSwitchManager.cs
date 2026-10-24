@@ -39,33 +39,51 @@ public class KillSwitchManager
 
     public sealed record EntryExitInfo(ProfileItem? Entry, ECarrierMode Mode, ProfileItem? Exit);
 
-    /// <summary>Moves the single pin of older builds into the per-chain map.</summary>
-    public static void MigrateLegacyPin(KillSwitchItem item)
+    /// <summary>Moves the single pin and the auto-entry flag of older builds into the current settings.</summary>
+    public static void MigrateLegacySettings(KillSwitchItem item)
     {
         if (item.PinnedIndexId.IsNotEmpty() && item.PinnedForIndexId.IsNotEmpty())
         {
             item.FrozenCarriers ??= [];
             item.FrozenCarriers.TryAdd(item.PinnedForIndexId!, item.PinnedIndexId!);
         }
+        if (item.AutoEntry == false)
+        {
+            item.EntryMode = EEntryMode.Manual;
+        }
         item.PinnedIndexId = null;
         item.PinnedForIndexId = null;
+        item.AutoEntry = null;
     }
 
     /// <summary>
-    /// The carrier a chain or group must enter through, if any: the hand-picked one while auto
-    /// entry is off, else the one frozen by the switch. Null means the balancer picks live.
+    /// The carrier a chain or group must enter through, if any: in manual mode the hand-picked
+    /// one, else (or when none was picked) the frozen best. Null means the balancer picks live.
     /// </summary>
     public static (string? CarrierId, ECarrierMode Mode) GetCarrier(KillSwitchItem item, string chainId)
     {
-        if (!item.AutoEntry && item.ManualCarriers?.GetValueOrDefault(chainId) is { } manual)
+        if (!item.EntryControl)
+        {
+            return (null, ECarrierMode.None);
+        }
+        if (item.EntryMode == EEntryMode.Manual && item.ManualCarriers?.GetValueOrDefault(chainId) is { } manual)
         {
             return (manual, ECarrierMode.Manual);
         }
-        if (item.Enabled && item.FrozenCarriers?.GetValueOrDefault(chainId) is { } frozen)
+        if (item.FrozenCarriers?.GetValueOrDefault(chainId) is { } frozen)
         {
             return (frozen, ECarrierMode.Frozen);
         }
         return (null, ECarrierMode.None);
+    }
+
+    /// <summary>Forgets a carrier that stopped working, for every chain frozen to it.</summary>
+    public static void UnfreezeCarrier(KillSwitchItem item, string carrierId)
+    {
+        foreach (var chainId in (item.FrozenCarriers ?? []).Where(kv => kv.Value == carrierId).Select(kv => kv.Key).ToList())
+        {
+            item.FrozenCarriers!.Remove(chainId);
+        }
     }
 
     /// <summary>The group a chain or group picks its carrier from; null when there is nothing to pick.</summary>
@@ -86,7 +104,7 @@ public class KillSwitchManager
 
     /// <summary>
     /// Freezes the entry group of the active chain or group to its carrier: a policy group becomes
-    /// that member, a chain gets it as its first hop. With the switch on and nothing frozen yet,
+    /// that member, a chain gets it as its first hop. With entry control on and nothing frozen yet,
     /// a carrier already frozen for another chain on the same entry group is reused, so switching
     /// between chains never runs unfrozen.
     /// </summary>
@@ -100,7 +118,7 @@ public class KillSwitchManager
         }
 
         var (carrierId, _) = GetCarrier(item, node.IndexId);
-        if (carrierId is null && item.Enabled)
+        if (carrierId is null && item.EntryControl)
         {
             carrierId = await FindSiblingFrozenCarrierAsync(item, node.IndexId, entryGroupId);
             if (carrierId is not null)

@@ -3214,11 +3214,38 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Auto entry.
+        ///   Looks up a localized string similar to Entry.
         /// </summary>
-        public static string TbAutoEntry {
+        public static string TbEntry {
             get {
-                return ResourceManager.GetString("TbAutoEntry", resourceCulture);
+                return ResourceManager.GetString("TbEntry", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Manual.
+        /// </summary>
+        public static string TbEntryModeManual {
+            get {
+                return ResourceManager.GetString("TbEntryModeManual", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Auto (frozen).
+        /// </summary>
+        public static string TbEntryModeFrozen {
+            get {
+                return ResourceManager.GetString("TbEntryModeFrozen", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Auto + failover.
+        /// </summary>
+        public static string TbEntryModeFailover {
+            get {
+                return ResourceManager.GetString("TbEntryModeFailover", resourceCulture);
             }
         }
         

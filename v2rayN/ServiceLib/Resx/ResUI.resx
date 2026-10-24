@@ -906,8 +906,17 @@
   <data name="TbEnableKillSwitch" xml:space="preserve">
     <value>Kill switch</value>
   </data>
-  <data name="TbAutoEntry" xml:space="preserve">
-    <value>Auto entry</value>
+  <data name="TbEntry" xml:space="preserve">
+    <value>Entry</value>
+  </data>
+  <data name="TbEntryModeManual" xml:space="preserve">
+    <value>Manual</value>
+  </data>
+  <data name="TbEntryModeFrozen" xml:space="preserve">
+    <value>Auto (frozen)</value>
+  </data>
+  <data name="TbEntryModeFailover" xml:space="preserve">
+    <value>Auto + failover</value>
   </data>
   <data name="menuTogglePin" xml:space="preserve">
     <value>Pin / unpin at top</value>
