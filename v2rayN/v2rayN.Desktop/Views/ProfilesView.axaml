@@ -121,6 +121,8 @@
                             x:Name="menuSetDefaultServer"
                             Header="{x:Static resx:ResUI.menuSetDefaultServer}"
                             InputGesture="Enter" />
+                        <MenuItem x:Name="menuTogglePin" Header="{x:Static resx:ResUI.menuTogglePin}" />
+                        <MenuItem x:Name="menuUseAsKillSwitchCarrier" Header="{x:Static resx:ResUI.menuUseAsKillSwitchCarrier}" />
                         <MenuItem
                             x:Name="menuEditServer"
                             Header="{x:Static resx:ResUI.menuEditServer}"
@@ -227,6 +229,11 @@
                                         Content="{x:Static resx:ResUI.TipActiveServer}"
                                         IsVisible="{Binding IsActive}"
                                         Theme="{DynamicResource TagLabel}" />
+                                    <TextBlock
+                                        Margin="{StaticResource MarginLr4}"
+                                        VerticalAlignment="Center"
+                                        IsVisible="{Binding IsPinned}"
+                                        Text="📌" />
                                     <TextBlock
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"

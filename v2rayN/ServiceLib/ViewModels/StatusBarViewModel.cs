@@ -497,7 +497,10 @@ public partial class StatusBarViewModel : MyReactiveObject
             // Freeze the carrier the balancer currently rates best; a profile without
             // an entry group has nothing to pin.
             var runningContext = CoreManager.Instance.RunningContext;
-            var pinned = await KillSwitchManager.PickBestCarrierAsync(runningContext);
+            var chosen = _config.KillSwitchItem.PinnedForIndexId == _config.IndexId
+                ? _config.KillSwitchItem.PinnedIndexId
+                : null;
+            var pinned = chosen ?? await KillSwitchManager.PickBestCarrierAsync(runningContext);
             if (pinned is null && runningContext?.OutboundTagIndexIds.Count > 0)
             {
                 NoticeManager.Instance.SendMessageEx("Kill switch: no healthy carrier found yet, try again in a few seconds");

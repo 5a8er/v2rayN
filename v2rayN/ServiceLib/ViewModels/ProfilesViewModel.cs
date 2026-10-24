@@ -53,6 +53,8 @@ public partial class ProfilesViewModel : MyReactiveObject
     public ReactiveCommand<RxVoid, RxVoid> RemoveDuplicateServerCmd { get; }
     public ReactiveCommand<RxVoid, RxVoid> CopyServerCmd { get; }
     public ReactiveCommand<RxVoid, RxVoid> SetDefaultServerCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> TogglePinCmd { get; }
+    public ReactiveCommand<RxVoid, RxVoid> UseAsKillSwitchCarrierCmd { get; }
     public ReactiveCommand<RxVoid, RxVoid> ShareServerCmd { get; }
     public ReactiveCommand<RxVoid, RxVoid> GenGroupAllServerCmd { get; }
     public ReactiveCommand<RxVoid, RxVoid> GenGroupRegionServerCmd { get; }
@@ -133,6 +135,14 @@ public partial class ProfilesViewModel : MyReactiveObject
         SetDefaultServerCmd = ReactiveCommand.CreateFromTask(async () =>
         {
             await SetDefaultServer();
+        }, canEditRemove);
+        TogglePinCmd = ReactiveCommand.CreateFromTask(async () =>
+        {
+            await TogglePin();
+        }, canEditRemove);
+        UseAsKillSwitchCarrierCmd = ReactiveCommand.CreateFromTask(async () =>
+        {
+            await UseAsKillSwitchCarrier();
         }, canEditRemove);
         ShareServerCmd = ReactiveCommand.CreateFromTask(async () =>
         {
@@ -403,6 +413,7 @@ public partial class ProfilesViewModel : MyReactiveObject
 
         var lstServerStat = (_config.GuiItem.EnableStatistics ? StatisticsManager.Instance.ServerStat : null) ?? [];
         var lstProfileExs = await ProfileExManager.Instance.GetProfileExs();
+        var pinned = _config.UiItem.PinnedIndexIds?.ToHashSet() ?? [];
         lstModel = (from t in lstModel
                     join t2 in lstServerStat on t.IndexId equals t2.IndexId into t2b
                     from t22 in t2b.DefaultIfEmpty()
@@ -421,6 +432,7 @@ public partial class ProfilesViewModel : MyReactiveObject
                         Subid = t.Subid,
                         SubRemarks = t.SubRemarks,
                         IsActive = t.IndexId == _config.IndexId,
+                        IsPinned = pinned.Contains(t.IndexId),
                         Sort = t33?.Sort ?? 0,
                         Delay = t33?.Delay ?? 0,
                         Speed = t33?.Speed ?? 0,
@@ -431,7 +443,7 @@ public partial class ProfilesViewModel : MyReactiveObject
                         TodayUp = t22 == null ? "" : Utils.HumanFy(t22.TodayUp),
                         TotalDown = t22 == null ? "" : Utils.HumanFy(t22.TotalDown),
                         TotalUp = t22 == null ? "" : Utils.HumanFy(t22.TotalUp)
-                    }).OrderBy(t => t.Sort).ToList();
+                    }).OrderBy(t => t.IsPinned ? 0 : 1).ThenBy(t => t.Sort).ToList();
 
         return lstModel;
     }
@@ -554,6 +566,69 @@ public partial class ProfilesViewModel : MyReactiveObject
         {
             await RefreshServers();
             NoticeManager.Instance.Enqueue(ResUI.OperationSuccess);
+        }
+    }
+
+    /// <summary>Pins the selection to the top of the list, or unpins it when all of it is pinned already.</summary>
+    public async Task TogglePin()
+    {
+        var selected = SelectedProfiles?.Select(t => t.IndexId).ToList() ?? [];
+        if (selected.Count == 0)
+        {
+            NoticeManager.Instance.Enqueue(ResUI.PleaseSelectServer);
+            return;
+        }
+
+        var pinned = _config.UiItem.PinnedIndexIds ?? [];
+        if (selected.All(pinned.Contains))
+        {
+            pinned.RemoveAll(selected.Contains);
+        }
+        else
+        {
+            pinned.AddRange(selected.Where(id => !pinned.Contains(id)));
+        }
+        _config.UiItem.PinnedIndexIds = pinned;
+        await ConfigHandler.SaveConfig(_config);
+        await RefreshServers();
+    }
+
+    /// <summary>
+    /// Makes the selected server the carrier the kill switch freezes the active chain or group to.
+    /// Applied at once while the switch is on, otherwise used the next time it is turned on.
+    /// </summary>
+    public async Task UseAsKillSwitchCarrier()
+    {
+        var item = SelectedProfile?.IndexId is { } id ? await AppManager.Instance.GetProfileItem(id) : null;
+        if (item is null)
+        {
+            NoticeManager.Instance.Enqueue(ResUI.PleaseSelectServer);
+            return;
+        }
+        if (item.ConfigType.IsGroupType())
+        {
+            NoticeManager.Instance.Enqueue("Kill switch carrier must be a single server, not a group or chain");
+            return;
+        }
+        var active = await AppManager.Instance.GetProfileItem(_config.IndexId);
+        if (active is null || !active.ConfigType.IsGroupType())
+        {
+            NoticeManager.Instance.Enqueue("The active server is a single server; a carrier only applies to an active chain or group");
+            return;
+        }
+
+        var killSwitch = _config.KillSwitchItem;
+        killSwitch.PinnedIndexId = item.IndexId;
+        killSwitch.PinnedForIndexId = active.IndexId;
+        await ConfigHandler.SaveConfig(_config);
+        if (killSwitch.Enabled)
+        {
+            NoticeManager.Instance.Enqueue($"Kill switch: {active.Remarks} now enters through {item.Remarks}");
+            Reload();
+        }
+        else
+        {
+            NoticeManager.Instance.Enqueue($"Kill switch carrier set to {item.Remarks}; used when the kill switch is turned on");
         }
     }
 

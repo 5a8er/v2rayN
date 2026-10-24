@@ -3214,6 +3214,24 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Pin / unpin at top.
+        /// </summary>
+        public static string menuTogglePin {
+            get {
+                return ResourceManager.GetString("menuTogglePin", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Use as kill-switch carrier.
+        /// </summary>
+        public static string menuUseAsKillSwitchCarrier {
+            get {
+                return ResourceManager.GetString("menuUseAsKillSwitchCarrier", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 FakeIP 的本地化字符串。
         /// </summary>
         public static string TbFakeIP {

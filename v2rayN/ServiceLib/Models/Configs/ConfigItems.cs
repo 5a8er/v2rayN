@@ -87,6 +87,8 @@ public class MsgUIItem
 [Serializable]
 public class UIItem
 {
+    // Servers kept at the top of every list, whatever the sort order
+    public List<string>? PinnedIndexIds { get; set; }
     public bool EnableAutoAdjustMainLvColWidth { get; set; }
     public int MainGirdHeight1 { get; set; }
     public int MainGirdHeight2 { get; set; }
