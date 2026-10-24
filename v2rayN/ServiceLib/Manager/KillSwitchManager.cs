@@ -113,9 +113,9 @@ public class KillSwitchManager
     #region Firewall
 
     /// <summary>
-    /// Installs the rule set for the context about to run. Must be called before the cores start.
-    /// Returns an error message, or null on success. Without a sudo password the previous rule set
-    /// stays in place, which keeps the machine closed rather than open.
+    /// Loads the rule set for the context about to run. Must be called before the cores start.
+    /// Returns an error message, or null on success. Without a sudo password nothing is loaded and
+    /// the caller must not start the cores (fail closed).
     /// </summary>
     public async Task<string?> ApplyAsync(CoreConfigContext context)
     {
@@ -125,12 +125,10 @@ public class KillSwitchManager
             return "Kill switch: no entry server address could be resolved, firewall left unchanged";
         }
 
+        // Always (re)load: the installed file only proves what was written, not that the live
+        // table still exists (a `nft flush ruleset` or a firewall reload removes it silently).
+        // The load is atomic and idempotent thanks to the delete-table line.
         var ruleSet = BuildRuleSet(entryIps, ResolveDirectDnsAddresses(context.AppConfig));
-        if (ReadInstalledRuleSet() == ruleSet)
-        {
-            return null;
-        }
-
         var ruleSetPath = Utils.GetBinConfigPath("killswitch.nft");
         await File.WriteAllTextAsync(ruleSetPath, ruleSet);
         var script = $"""
@@ -178,7 +176,7 @@ public class KillSwitchManager
     {
         if (AppManager.Instance.LinuxSudoPwd.IsNullOrEmpty())
         {
-            return "Kill switch: sudo password needed to change the firewall (toggle the kill switch or TUN to enter it)";
+            return "Kill switch: sudo password needed to load the firewall, nothing was started (toggle TUN or the kill switch to enter it)";
         }
         try
         {
@@ -199,18 +197,6 @@ public class KillSwitchManager
         {
             Logging.SaveLog(_tag, ex);
             return $"Kill switch: {ex.Message}";
-        }
-    }
-
-    private static string? ReadInstalledRuleSet()
-    {
-        try
-        {
-            return File.Exists(InstalledRuleSetPath) ? File.ReadAllText(InstalledRuleSetPath) : null;
-        }
-        catch
-        {
-            return null;
         }
     }
 
